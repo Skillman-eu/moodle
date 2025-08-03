@@ -2417,8 +2417,15 @@ function send_headers($contenttype, $cacheable = true) {
     }
     @header('Accept-Ranges: none');
 
+    // Skillman fix to allow an embedding of map and list into other sites.
+    // Not working properly into iframe - resources (images, etc) being blocked.
+    //$is_skillman_embed = stripos(qualified_me(), 'skillman')&&stripos(qualified_me(), 'embedded=1');
+    // Working 99% OK in iframe (only 3-rd party resources - theme js/css being cblocked).
+    $is_skillman_embed = stripos(qualified_me(), 'block_skillman') || stripos(qualified_me(), 'blocks/skillman') || stripos(qualified_me(), 'edumy') || stripos(qualified_me(), 'tag/index');
+
+
     // The Moodle app must be allowed to embed content always.
-    if (empty($CFG->allowframembedding) && !core_useragent::is_moodle_app()) {
+    if (empty($CFG->allowframembedding) && !core_useragent::is_moodle_app() && !$is_skillman_embed) {
         @header('X-Frame-Options: sameorigin');
     }
 
