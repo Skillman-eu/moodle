@@ -529,3 +529,21 @@ function uu_check_custom_profile_data(&$data, array &$profilefieldvalues = []) {
     }
     return $noerror;
 }
+
+/**
+ * Check custom upload role.
+ *
+ * @param object $user
+ * @return bool
+ *
+ * @throws dml_exception
+ */
+function check_custom_upload_role (object $user): bool {
+    $roles = get_user_roles(context_system::instance(), $user->id);
+    foreach ($roles as $role) {
+        if ($role->shortname == 'useruploader') {
+            return true;
+        }
+    }
+    return false;
+}

@@ -100,24 +100,17 @@ class preview extends \html_table {
             $rowcols = array();
             $rowcols['line'] = $linenum;
             foreach ($fields as $key => $field) {
-                $rowcols[$this->filecolumns[$key]] = s(trim($field));
+				// Skillman - adjust to process case without username.
+				if ($addusername) {
+					$rowcols[$filecolumns[0]] = ''; // username.
+					$rowcols[$filecolumns[$key+1]] = s(trim($field));
+				} else {
+					$rowcols[$filecolumns[$key]] = s(trim($field));
+				}
             }
             $rowcols['status'] = array();
-
-            if (isset($rowcols['username'])) {
-                $stdusername = \core_user::clean_field($rowcols['username'], 'username');
-                if ($rowcols['username'] !== $stdusername) {
-                    $rowcols['status'][] = get_string('invalidusernameupload');
-                }
-                if ($userid = $DB->get_field('user', 'id',
-                        ['username' => $stdusername, 'mnethostid' => $CFG->mnet_localhost_id])) {
-                    $rowcols['username'] = \html_writer::link(
-                        new \moodle_url('/user/profile.php', ['id' => $userid]), $rowcols['username']);
-                }
-            } else {
-                $rowcols['status'][] = get_string('missingusername');
-            }
-
+			
+			// Skillman: rearrange - verify email 1st.
             if (isset($rowcols['email'])) {
                 if (!validate_email($rowcols['email'])) {
                     $rowcols['status'][] = get_string('invalidemail');
@@ -126,9 +119,27 @@ class preview extends \html_table {
                 $select = $DB->sql_like('email', ':email', false, true, false, '|');
                 $params = array('email' => $DB->sql_like_escape($rowcols['email'], '|'));
                 if ($DB->record_exists_select('user', $select , $params)) {
-                    $rowcols['status'][] = get_string('useremailduplicate', 'error');
+					// $rowcols['status'][] = get_string('useremailduplicate', 'error');
+					// Skillman: get existing user.
+					$rowcols['username'] = s($DB->get_field('user', 'username', array('email'=>$rowcols['email'], 'mnethostid'=>$CFG->mnet_localhost_id)));
+					$rowcols['status'][] = get_string('userexist', 'tool_uploaduser');
                 }
             }
+
+			// Skillman - username can be empty - so no error!
+			if (isset($rowcols['username']) && !empty($rowcols['username'])) {
+				$stdusername = \core_user::clean_field($rowcols['username'], 'username');
+				if ($rowcols['username'] !== $stdusername) {
+					$rowcols['status'][] = get_string('invalidusernameupload');
+				}
+                if ($userid = $DB->get_field('user', 'id',
+                        ['username' => $stdusername, 'mnethostid' => $CFG->mnet_localhost_id])) {
+                    $rowcols['username'] = \html_writer::link(
+                        new \moodle_url('/user/profile.php', ['id' => $userid]), $rowcols['username']);
+                }
+			} else {
+			   // $rowcols['status'][] = get_string('missingusername');
+			}
 
             if (isset($rowcols['theme'])) {
                 list($status, $message) = field_value_validators::validate_theme($rowcols['theme']);

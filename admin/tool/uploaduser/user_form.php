@@ -36,7 +36,12 @@ require_once($CFG->dirroot . '/user/editlib.php');
  */
 class admin_uploaduser_form1 extends moodleform {
     function definition () {
+        global $USER;
+
         $mform = $this->_form;
+
+        $templateuser = $USER;
+        $skillmanuploader = check_custom_upload_role($templateuser);
 
         $mform->addElement('header', 'settingsheader', get_string('upload'));
 
@@ -48,23 +53,38 @@ class admin_uploaduser_form1 extends moodleform {
         $mform->addElement('filepicker', 'userfile', get_string('file'));
         $mform->addRule('userfile', null, 'required');
 
-        $choices = csv_import_reader::get_delimiter_list();
-        $mform->addElement('select', 'delimiter_name', get_string('csvdelimiter', 'tool_uploaduser'), $choices);
-        if (array_key_exists('cfg', $choices)) {
-            $mform->setDefault('delimiter_name', 'cfg');
-        } else if (get_string('listsep', 'langconfig') == ';') {
-            $mform->setDefault('delimiter_name', 'semicolon');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'delimiter_name', 'comma');
+            $mform->setType('delimiter_name', PARAM_TEXT);
         } else {
-            $mform->setDefault('delimiter_name', 'comma');
+            $choices = csv_import_reader::get_delimiter_list();
+            $mform->addElement('select', 'delimiter_name', get_string('csvdelimiter', 'tool_uploaduser'), $choices);
+            if (array_key_exists('cfg', $choices)) {
+                $mform->setDefault('delimiter_name', 'cfg');
+            } else if (get_string('listsep', 'langconfig') == ';') {
+                $mform->setDefault('delimiter_name', 'semicolon');
+            } else {
+                $mform->setDefault('delimiter_name', 'comma');
+            }
         }
 
-        $choices = core_text::get_encodings();
-        $mform->addElement('select', 'encoding', get_string('encoding', 'tool_uploaduser'), $choices);
-        $mform->setDefault('encoding', 'UTF-8');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'encoding', 'UTF-8');
+            $mform->setType('encoding', PARAM_TEXT);
+        } else {
+            $choices = core_text::get_encodings();
+            $mform->addElement('select', 'encoding', get_string('encoding', 'tool_uploaduser'), $choices);
+            $mform->setDefault('encoding', 'UTF-8');
+        }
 
-        $choices = array('10'=>10, '20'=>20, '100'=>100, '1000'=>1000, '100000'=>100000);
-        $mform->addElement('select', 'previewrows', get_string('rowpreviewnum', 'tool_uploaduser'), $choices);
-        $mform->setType('previewrows', PARAM_INT);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'previewrows', 10);
+            $mform->setType('previewrows', PARAM_INT);
+        } else {
+            $choices = array('10'=>10, '20'=>20, '100'=>100, '1000'=>1000, '100000'=>100000);
+            $mform->addElement('select', 'previewrows', get_string('rowpreviewnum', 'tool_uploaduser'), $choices);
+            $mform->setType('previewrows', PARAM_INT);
+        }
 
         $this->add_action_buttons(false, get_string('uploadusers', 'tool_uploaduser'));
     }
@@ -99,88 +119,141 @@ class admin_uploaduser_form2 extends moodleform {
 
         // I am the template user, why should it be the administrator? we have roles now, other ppl may use this script ;-)
         $templateuser = $USER;
+        $skillmanuploader = check_custom_upload_role($templateuser);
 
-        // upload settings and file
-        $mform->addElement('header', 'settingsheader', get_string('settings'));
-
-        $choices = array(UU_USER_ADDNEW     => get_string('uuoptype_addnew', 'tool_uploaduser'),
-                         UU_USER_ADDINC     => get_string('uuoptype_addinc', 'tool_uploaduser'),
-                         UU_USER_ADD_UPDATE => get_string('uuoptype_addupdate', 'tool_uploaduser'),
-                         UU_USER_UPDATE     => get_string('uuoptype_update', 'tool_uploaduser'));
-        $mform->addElement('select', 'uutype', get_string('uuoptype', 'tool_uploaduser'), $choices);
-
-        $choices = array(0 => get_string('infilefield', 'auth'), 1 => get_string('createpasswordifneeded', 'auth'));
-        $mform->addElement('select', 'uupasswordnew', get_string('uupasswordnew', 'tool_uploaduser'), $choices);
-        $mform->setDefault('uupasswordnew', 1);
-        $mform->hideIf('uupasswordnew', 'uutype', 'eq', UU_USER_UPDATE);
-
-        $choices = array(UU_UPDATE_NOCHANGES    => get_string('nochanges', 'tool_uploaduser'),
-                         UU_UPDATE_FILEOVERRIDE => get_string('uuupdatefromfile', 'tool_uploaduser'),
-                         UU_UPDATE_ALLOVERRIDE  => get_string('uuupdateall', 'tool_uploaduser'),
-                         UU_UPDATE_MISSING      => get_string('uuupdatemissing', 'tool_uploaduser'));
-        $mform->addElement('select', 'uuupdatetype', get_string('uuupdatetype', 'tool_uploaduser'), $choices);
-        $mform->setDefault('uuupdatetype', UU_UPDATE_NOCHANGES);
-        $mform->hideIf('uuupdatetype', 'uutype', 'eq', UU_USER_ADDNEW);
-        $mform->hideIf('uuupdatetype', 'uutype', 'eq', UU_USER_ADDINC);
-
-        $choices = array(0 => get_string('nochanges', 'tool_uploaduser'), 1 => get_string('update'));
-        $mform->addElement('select', 'uupasswordold', get_string('uupasswordold', 'tool_uploaduser'), $choices);
-        $mform->setDefault('uupasswordold', 0);
-        $mform->hideIf('uupasswordold', 'uutype', 'eq', UU_USER_ADDNEW);
-        $mform->hideIf('uupasswordold', 'uutype', 'eq', UU_USER_ADDINC);
-        $mform->hideIf('uupasswordold', 'uuupdatetype', 'eq', 0);
-        $mform->hideIf('uupasswordold', 'uuupdatetype', 'eq', 3);
-
-        $choices = array(UU_PWRESET_WEAK => get_string('usersweakpassword', 'tool_uploaduser'),
-                         UU_PWRESET_NONE => get_string('none'),
-                         UU_PWRESET_ALL  => get_string('all'));
-        if (empty($CFG->passwordpolicy)) {
-            unset($choices[UU_PWRESET_WEAK]);
+        if (!$skillmanuploader) {
+            // upload settings and file
+            $mform->addElement('header', 'settingsheader', get_string('settings'));
         }
-        $mform->addElement('select', 'uuforcepasswordchange', get_string('forcepasswordchange', 'core'), $choices);
 
-        $mform->addElement('selectyesno', 'uumatchemail', get_string('matchemail', 'tool_uploaduser'));
-        $mform->setDefault('uumatchemail', 0);
-        $mform->hideIf('uumatchemail', 'uutype', 'eq', UU_USER_ADDNEW);
-        $mform->hideIf('uumatchemail', 'uutype', 'eq', UU_USER_ADDINC);
-
-        $mform->addElement('selectyesno', 'uuallowrenames', get_string('allowrenames', 'tool_uploaduser'));
-        $mform->setDefault('uuallowrenames', 0);
-        $mform->hideIf('uuallowrenames', 'uutype', 'eq', UU_USER_ADDNEW);
-        $mform->hideIf('uuallowrenames', 'uutype', 'eq', UU_USER_ADDINC);
-
-        $mform->addElement('selectyesno', 'uuallowdeletes', get_string('allowdeletes', 'tool_uploaduser'));
-        $mform->setDefault('uuallowdeletes', 0);
-        // Ensure user is able to perform user deletion.
-        if (!has_capability('moodle/user:delete', context_system::instance())) {
-            $mform->hardFreeze('uuallowdeletes');
-            $mform->setConstant('uuallowdeletes', 0);
-        }
-        $mform->hideIf('uuallowdeletes', 'uutype', 'eq', UU_USER_ADDNEW);
-        $mform->hideIf('uuallowdeletes', 'uutype', 'eq', UU_USER_ADDINC);
-
-        $mform->addElement('selectyesno', 'uuallowsuspends', get_string('allowsuspends', 'tool_uploaduser'));
-        $mform->setDefault('uuallowsuspends', 1);
-        $mform->hideIf('uuallowsuspends', 'uutype', 'eq', UU_USER_ADDNEW);
-        $mform->hideIf('uuallowsuspends', 'uutype', 'eq', UU_USER_ADDINC);
-
-        if (!empty($CFG->allowaccountssameemail)) {
-            $mform->addElement('selectyesno', 'uunoemailduplicates', get_string('uunoemailduplicates', 'tool_uploaduser'));
-            $mform->setDefault('uunoemailduplicates', 1);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uutype', UU_USER_ADD_UPDATE);
+            $mform->setType('uutype', PARAM_INT);
         } else {
-            $mform->addElement('hidden', 'uunoemailduplicates', 1);
+            $choices = array(UU_USER_ADDNEW => get_string('uuoptype_addnew', 'tool_uploaduser'),
+                UU_USER_ADDINC => get_string('uuoptype_addinc', 'tool_uploaduser'),
+                UU_USER_ADD_UPDATE => get_string('uuoptype_addupdate', 'tool_uploaduser'),
+                UU_USER_UPDATE => get_string('uuoptype_update', 'tool_uploaduser'));
+            $mform->addElement('select', 'uutype', get_string('uuoptype', 'tool_uploaduser'), $choices);
         }
-        $mform->setType('uunoemailduplicates', PARAM_BOOL);
 
-        $mform->addElement('selectyesno', 'uustandardusernames', get_string('uustandardusernames', 'tool_uploaduser'));
-        $mform->setDefault('uustandardusernames', 1);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uupasswordnew', 1);
+            $mform->setType('uupasswordnew', PARAM_INT);
+        } else {
+            $choices = array(0 => get_string('infilefield', 'auth'), 1 => get_string('createpasswordifneeded', 'auth'));
+            $mform->addElement('select', 'uupasswordnew', get_string('uupasswordnew', 'tool_uploaduser'), $choices);
+            $mform->setDefault('uupasswordnew', 1);
+            $mform->hideIf('uupasswordnew', 'uutype', 'eq', UU_USER_UPDATE);
+        }
 
-        $choices = array(UU_BULK_NONE    => get_string('no'),
-                         UU_BULK_NEW     => get_string('uubulknew', 'tool_uploaduser'),
-                         UU_BULK_UPDATED => get_string('uubulkupdated', 'tool_uploaduser'),
-                         UU_BULK_ALL     => get_string('uubulkall', 'tool_uploaduser'));
-        $mform->addElement('select', 'uubulk', get_string('uubulk', 'tool_uploaduser'), $choices);
-        $mform->setDefault('uubulk', 0);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uuupdatetype', UU_UPDATE_NOCHANGES);
+            $mform->setType('uuupdatetype', PARAM_INT);
+        } else {
+            $choices = array(UU_UPDATE_NOCHANGES    => get_string('nochanges', 'tool_uploaduser'),
+                             UU_UPDATE_FILEOVERRIDE => get_string('uuupdatefromfile', 'tool_uploaduser'),
+                             UU_UPDATE_ALLOVERRIDE  => get_string('uuupdateall', 'tool_uploaduser'),
+                             UU_UPDATE_MISSING      => get_string('uuupdatemissing', 'tool_uploaduser'));
+            $mform->addElement('select', 'uuupdatetype', get_string('uuupdatetype', 'tool_uploaduser'), $choices);
+            $mform->setDefault('uuupdatetype', UU_UPDATE_NOCHANGES);
+            $mform->hideIf('uuupdatetype', 'uutype', 'eq', UU_USER_ADDNEW);
+            $mform->hideIf('uuupdatetype', 'uutype', 'eq', UU_USER_ADDINC);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uupasswordold', 0);
+            $mform->setType('uupasswordold', PARAM_INT);
+        } else {
+            $choices = array(0 => get_string('nochanges', 'tool_uploaduser'), 1 => get_string('update'));
+            $mform->addElement('select', 'uupasswordold', get_string('uupasswordold', 'tool_uploaduser'), $choices);
+            $mform->setDefault('uupasswordold', 0);
+            $mform->hideIf('uupasswordold', 'uutype', 'eq', UU_USER_ADDNEW);
+            $mform->hideIf('uupasswordold', 'uutype', 'eq', UU_USER_ADDINC);
+            $mform->hideIf('uupasswordold', 'uuupdatetype', 'eq', 0);
+            $mform->hideIf('uupasswordold', 'uuupdatetype', 'eq', 3);
+        }
+
+        if ($skillmanuploader && !empty($CFG->passwordpolicy)) {
+            $mform->addElement('hidden', 'uuforcepasswordchange', UU_PWRESET_WEAK);
+            $mform->setType('uuforcepasswordchange', PARAM_INT);
+        } else {
+            $choices = array(UU_PWRESET_WEAK => get_string('usersweakpassword', 'tool_uploaduser'),
+                UU_PWRESET_NONE => get_string('none'),
+                UU_PWRESET_ALL => get_string('all'));
+            if (empty($CFG->passwordpolicy)) {
+                unset($choices[UU_PWRESET_WEAK]);
+            }
+            $mform->addElement('select', 'uuforcepasswordchange', get_string('forcepasswordchange', 'core'), $choices);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uumatchemail', 1);
+            $mform->setType('uumatchemail', PARAM_INT);
+        } else {
+            $mform->addElement('selectyesno', 'uumatchemail', get_string('matchemail', 'tool_uploaduser'));
+            $mform->setDefault('uumatchemail', 9);
+            $mform->hideIf('uumatchemail', 'uutype', 'eq', UU_USER_ADDNEW);
+            $mform->hideIf('uumatchemail', 'uutype', 'eq', UU_USER_ADDINC);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uuallowdeletes', 0);
+            $mform->setType('uuallowdeletes', PARAM_INT);
+        } else {
+            $mform->addElement('selectyesno', 'uuallowdeletes', get_string('allowdeletes', 'tool_uploaduser'));
+            $mform->setDefault('uuallowdeletes', 0);
+            // Ensure user is able to perform user deletion.
+            if (!has_capability('moodle/user:delete', context_system::instance())) {
+                $mform->hardFreeze('uuallowdeletes');
+                $mform->setConstant('uuallowdeletes', 0);
+            }
+            $mform->hideIf('uuallowdeletes', 'uutype', 'eq', UU_USER_ADDNEW);
+            $mform->hideIf('uuallowdeletes', 'uutype', 'eq', UU_USER_ADDINC);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uuallowsuspends', 1);
+            $mform->setType('uuallowsuspends', PARAM_INT);
+        } else {
+            $mform->addElement('selectyesno', 'uuallowsuspends', get_string('allowsuspends', 'tool_uploaduser'));
+            $mform->setDefault('uuallowsuspends', 1);
+            $mform->hideIf('uuallowsuspends', 'uutype', 'eq', UU_USER_ADDNEW);
+            $mform->hideIf('uuallowsuspends', 'uutype', 'eq', UU_USER_ADDINC);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uunoemailduplicates', 1);
+            $mform->setType('uunoemailduplicates', PARAM_BOOL);
+        } else {
+            if (!empty($CFG->allowaccountssameemail)) {
+                $mform->addElement('selectyesno', 'uunoemailduplicates', get_string('uunoemailduplicates', 'tool_uploaduser'));
+                $mform->setDefault('uunoemailduplicates', 1);
+            } else {
+                $mform->addElement('hidden', 'uunoemailduplicates', 1);
+            }
+            $mform->setType('uunoemailduplicates', PARAM_BOOL);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uustandardusernames', 1);
+            $mform->setType('uustandardusernames', PARAM_INT);
+        } else {
+            $mform->addElement('selectyesno', 'uustandardusernames', get_string('uustandardusernames', 'tool_uploaduser'));
+            $mform->setDefault('uustandardusernames', 1);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'uubulk', UU_BULK_NONE);
+            $mform->setType('uubulk', PARAM_INT);
+        } else {
+            $choices = array(UU_BULK_NONE => get_string('no'),
+                UU_BULK_NEW => get_string('uubulknew', 'tool_uploaduser'),
+                UU_BULK_UPDATED => get_string('uubulkupdated', 'tool_uploaduser'),
+                UU_BULK_ALL => get_string('uubulkall', 'tool_uploaduser'));
+            $mform->addElement('select', 'uubulk', get_string('uubulk', 'tool_uploaduser'), $choices);
+            $mform->setDefault('uubulk', 0);
+        }
 
         // roles selection
         $showroles = false;
@@ -190,7 +263,7 @@ class admin_uploaduser_form2 extends moodleform {
                 break;
             }
         }
-        if ($showroles) {
+        if ($showroles && !$skillmanuploader) {
             $mform->addElement('header', 'rolesheader', get_string('roles'));
 
             $choices = uu_allowed_roles(true);
@@ -228,115 +301,214 @@ class admin_uploaduser_form2 extends moodleform {
                 unset($teacherroles);
             }
         }
+        if (!$skillmanuploader) {
+            // default values
+            $mform->addElement('header', 'defaultheader', get_string('defaultvalues', 'tool_uploaduser'));
 
-        // default values
-        $mform->addElement('header', 'defaultheader', get_string('defaultvalues', 'tool_uploaduser'));
+            $mform->addElement('text', 'username', get_string('uuusernametemplate', 'tool_uploaduser'), 'size="20"');
+            $mform->setType('username', PARAM_RAW); // No cleaning here. The process verifies it later.
+            $mform->addRule('username', get_string('requiredtemplate', 'tool_uploaduser'), 'required', null, 'client');
+            $mform->hideIf('username', 'uutype', 'eq', UU_USER_ADD_UPDATE);
+            $mform->hideIf('username', 'uutype', 'eq', UU_USER_UPDATE);
+            $mform->setForceLtr('username');
 
-        $mform->addElement('text', 'username', get_string('uuusernametemplate', 'tool_uploaduser'), 'size="20"');
-        $mform->setType('username', PARAM_RAW); // No cleaning here. The process verifies it later.
-        $mform->hideIf('username', 'uutype', 'eq', UU_USER_ADD_UPDATE);
-        $mform->hideIf('username', 'uutype', 'eq', UU_USER_UPDATE);
-        $mform->setForceLtr('username');
-
-        $mform->addElement('text', 'email', get_string('email'), 'maxlength="100" size="30"');
-        $mform->setType('email', PARAM_RAW); // No cleaning here. The process verifies it later.
-        $mform->hideIf('email', 'uutype', 'eq', UU_USER_ADD_UPDATE);
-        $mform->hideIf('email', 'uutype', 'eq', UU_USER_UPDATE);
-        $mform->setForceLtr('email');
-
-        // only enabled and known to work plugins
-        $choices = uu_supported_auths();
-        $mform->addElement('select', 'auth', get_string('chooseauthmethod','auth'), $choices);
-        $mform->setDefault('auth', 'manual'); // manual is a sensible backwards compatible default
-        $mform->addHelpButton('auth', 'chooseauthmethod', 'auth');
-        $mform->setAdvanced('auth');
-
-        $choices = array(0 => get_string('emaildisplayno'), 1 => get_string('emaildisplayyes'), 2 => get_string('emaildisplaycourse'));
-        $mform->addElement('select', 'maildisplay', get_string('emaildisplay'), $choices);
-        $mform->setDefault('maildisplay', core_user::get_property_default('maildisplay'));
-        $mform->addHelpButton('maildisplay', 'emaildisplay');
-
-        $choices = array(0 => get_string('emailenable'), 1 => get_string('emaildisable'));
-        $mform->addElement('select', 'emailstop', get_string('emailstop'), $choices);
-        $mform->setDefault('emailstop', core_user::get_property_default('emailstop'));
-        $mform->setAdvanced('emailstop');
-
-        $choices = array(0 => get_string('textformat'), 1 => get_string('htmlformat'));
-        $mform->addElement('select', 'mailformat', get_string('emailformat'), $choices);
-        $mform->setDefault('mailformat', core_user::get_property_default('mailformat'));
-        $mform->setAdvanced('mailformat');
-
-        $choices = array(0 => get_string('emaildigestoff'), 1 => get_string('emaildigestcomplete'), 2 => get_string('emaildigestsubjects'));
-        $mform->addElement('select', 'maildigest', get_string('emaildigest'), $choices);
-        $mform->setDefault('maildigest', core_user::get_property_default('maildigest'));
-        $mform->setAdvanced('maildigest');
-
-        $choices = array(1 => get_string('autosubscribeyes'), 0 => get_string('autosubscribeno'));
-        $mform->addElement('select', 'autosubscribe', get_string('autosubscribe'), $choices);
-        $mform->setDefault('autosubscribe', core_user::get_property_default('autosubscribe'));
-
-        $mform->addElement('text', 'city', get_string('city'), 'maxlength="120" size="25"');
-        $mform->setType('city', PARAM_TEXT);
-        if (empty($CFG->defaultcity)) {
-            $mform->setDefault('city', $templateuser->city);
-        } else {
-            $mform->setDefault('city', core_user::get_property_default('city'));
+            $mform->addElement('text', 'email', get_string('email'), 'maxlength="100" size="30"');
+            $mform->setType('email', PARAM_RAW); // No cleaning here. The process verifies it later.
+            $mform->hideIf('email', 'uutype', 'eq', UU_USER_ADD_UPDATE);
+            $mform->hideIf('email', 'uutype', 'eq', UU_USER_UPDATE);
+            $mform->setForceLtr('email');
         }
 
-        $choices = get_string_manager()->get_list_of_countries();
-        $choices = array(''=>get_string('selectacountry').'...') + $choices;
-        $mform->addElement('select', 'country', get_string('selectacountry'), $choices);
-        if (empty($CFG->country)) {
-            $mform->setDefault('country', $templateuser->country);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'auth', 'manual');
+            $mform->setType('auth', PARAM_TEXT);
         } else {
-            $mform->setDefault('country', core_user::get_property_default('country'));
+            // only enabled and known to work plugins
+            $choices = uu_supported_auths();
+            $mform->addElement('select', 'auth', get_string('chooseauthmethod', 'auth'), $choices);
+            $mform->setDefault('auth', 'manual'); // manual is a sensible backwards compatible default
+            $mform->addHelpButton('auth', 'chooseauthmethod', 'auth');
+            $mform->setAdvanced('auth');
         }
-        $mform->setAdvanced('country');
 
-        $choices = core_date::get_list_of_timezones($templateuser->timezone, true);
-        $mform->addElement('select', 'timezone', get_string('timezone'), $choices);
-        $mform->setDefault('timezone', $templateuser->timezone);
-        $mform->setAdvanced('timezone');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'emaildisplayno', 0);
+            $mform->setType('emaildisplayno', PARAM_INT);
+        } else {
+            $choices = array(0 => get_string('emaildisplayno'), 1 => get_string('emaildisplayyes'), 2 => get_string('emaildisplaycourse'));
+            $mform->addElement('select', 'maildisplay', get_string('emaildisplay'), $choices);
+            $mform->setDefault('maildisplay', core_user::get_property_default('maildisplay'));
+            $mform->addHelpButton('maildisplay', 'emaildisplay');
+        }
 
-        $mform->addElement('select', 'lang', get_string('preferredlanguage'), get_string_manager()->get_list_of_translations());
-        $mform->setDefault('lang', $templateuser->lang);
-        $mform->setAdvanced('lang');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'emailstop', 0);
+            $mform->setType('emailstop', PARAM_INT);
+        } else {
+            $choices = array(0 => get_string('emailenable'), 1 => get_string('emaildisable'));
+            $mform->addElement('select', 'emailstop', get_string('emailstop'), $choices);
+            $mform->setDefault('emailstop', core_user::get_property_default('emailstop'));
+            $mform->setAdvanced('emailstop');
+        }
 
-        $editoroptions = array('maxfiles'=>0, 'maxbytes'=>0, 'trusttext'=>false, 'forcehttps'=>false);
-        $mform->addElement('editor', 'description', get_string('userdescription'), null, $editoroptions);
-        $mform->setType('description', PARAM_CLEANHTML);
-        $mform->addHelpButton('description', 'userdescription');
-        $mform->setAdvanced('description');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'mailformat', 1);
+            $mform->setType('mailformat', PARAM_INT);
+        } else {
+            $choices = array(0 => get_string('textformat'), 1 => get_string('htmlformat'));
+            $mform->addElement('select', 'mailformat', get_string('emailformat'), $choices);
+            $mform->setDefault('mailformat', core_user::get_property_default('mailformat'));
+            $mform->setAdvanced('mailformat');
+        }
 
-        $mform->addElement('text', 'idnumber', get_string('idnumber'), 'maxlength="255" size="25"');
-        $mform->setType('idnumber', core_user::get_property_type('idnumber'));
-        $mform->setForceLtr('idnumber');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'maildigest', 2);
+            $mform->setType('maildigest', PARAM_INT);
+        } else {
+            $choices = array(0 => get_string('emaildigestoff'), 1 => get_string('emaildigestcomplete'), 2 => get_string('emaildigestsubjects'));
+            $mform->addElement('select', 'maildigest', get_string('emaildigest'), $choices);
+            $mform->setDefault('maildigest', core_user::get_property_default('maildigest'));
+            $mform->setAdvanced('maildigest');
+        }
 
-        $mform->addElement('text', 'institution', get_string('institution'), 'maxlength="255" size="25"');
-        $mform->setType('institution', PARAM_TEXT);
-        $mform->setDefault('institution', $templateuser->institution);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'autosubscribeyes', 0);
+            $mform->setType('autosubscribeyes', PARAM_INT);
+        } else {
+            $choices = array(1 => get_string('autosubscribeyes'), 0 => get_string('autosubscribeno'));
+            $mform->addElement('select', 'autosubscribe', get_string('autosubscribe'), $choices);
+            $mform->setDefault('autosubscribe', core_user::get_property_default('autosubscribe'));
+        }
 
-        $mform->addElement('text', 'department', get_string('department'), 'maxlength="255" size="25"');
-        $mform->setType('department', PARAM_TEXT);
-        $mform->setDefault('department', $templateuser->department);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'city', '');
+            $mform->setType('city', PARAM_TEXT);
+        } else {
+            $mform->addElement('text', 'city', get_string('city'), 'maxlength="120" size="25"');
+            $mform->setType('city', PARAM_TEXT);
+            if (empty($CFG->defaultcity)) {
+                $mform->setDefault('city', $templateuser->city);
+            } else {
+                $mform->setDefault('city', core_user::get_property_default('city'));
+            }
+        }
 
-        $mform->addElement('text', 'phone1', get_string('phone1'), 'maxlength="20" size="25"');
-        $mform->setType('phone1', PARAM_NOTAGS);
-        $mform->setAdvanced('phone1');
-        $mform->setForceLtr('phone1');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'country', '');
+            $mform->setType('country', PARAM_TEXT);
+        } else {
+            $choices = get_string_manager()->get_list_of_countries();
+            $choices = array('' => get_string('selectacountry') . '...') + $choices;
+            $mform->addElement('select', 'country', get_string('selectacountry'), $choices);
+            if (empty($CFG->country)) {
+                $mform->setDefault('country', $templateuser->country);
+            } else {
+                $mform->setDefault('country', core_user::get_property_default('country'));
+            }
+            $mform->setAdvanced('country');
+        }
 
-        $mform->addElement('text', 'phone2', get_string('phone2'), 'maxlength="20" size="25"');
-        $mform->setType('phone2', PARAM_NOTAGS);
-        $mform->setAdvanced('phone2');
-        $mform->setForceLtr('phone2');
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'timezone', '99');
+            $mform->setType('timezone', PARAM_TEXT);
+        } else {
+            $choices = core_date::get_list_of_timezones($templateuser->timezone, true);
+            $mform->addElement('select', 'timezone', get_string('timezone'), $choices);
+            $mform->setDefault('timezone', $templateuser->timezone);
+            $mform->setAdvanced('timezone');
+        }
 
-        $mform->addElement('text', 'address', get_string('address'), 'maxlength="255" size="25"');
-        $mform->setType('address', PARAM_TEXT);
-        $mform->setAdvanced('address');
+        if ($skillmanuploader) {
+             $mform->addElement('hidden', 'lang', 'en');
+             $mform->setType('lang', PARAM_TEXT);
+        } else {
+            $mform->addElement('select', 'lang', get_string('preferredlanguage'), get_string_manager()->get_list_of_translations());
+            $mform->setDefault('lang', $templateuser->lang);
+            $mform->setAdvanced('lang');
+        }
 
-        // Next the profile defaults
-        profile_definition($mform);
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'description[text]', '');
+            $mform->setType('description[text]', PARAM_CLEANHTML);
+            $mform->addElement('hidden', 'description[format]', 1);
+            $mform->setType('description[format]', PARAM_INT);
+        } else {
+            $editoroptions = array('maxfiles' => 0, 'maxbytes' => 0, 'trusttext' => false, 'forcehttps' => false);
+            $mform->addElement('editor', 'description', get_string('userdescription'), null, $editoroptions);
+            $mform->setType('description', PARAM_CLEANHTML);
+            $mform->addHelpButton('description', 'userdescription');
+            $mform->setAdvanced('description');
+        }
 
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'url', '');
+            $mform->setType('url', PARAM_URL);
+        } else {
+            $mform->addElement('text', 'url', get_string('webpage'), 'maxlength="255" size="50"');
+            $mform->setType('url', PARAM_URL);
+            $mform->setAdvanced('url');
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'idnumber', '');
+            $mform->setType('idnumber', core_user::get_property_type('idnumber'));
+        } else {
+            $mform->addElement('text', 'idnumber', get_string('idnumber'), 'maxlength="255" size="25"');
+            $mform->setType('idnumber', core_user::get_property_type('idnumber'));
+            $mform->setForceLtr('idnumber');
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'institution', '');
+            $mform->setType('institution', PARAM_TEXT);
+        } else {
+            $mform->addElement('text', 'institution', get_string('institution'), 'maxlength="255" size="25"');
+            $mform->setType('institution', PARAM_TEXT);
+            $mform->setDefault('institution', $templateuser->institution);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'department', '');
+            $mform->setType('department', PARAM_TEXT);
+        } else {
+            $mform->addElement('text', 'department', get_string('department'), 'maxlength="255" size="25"');
+            $mform->setType('department', PARAM_TEXT);
+            $mform->setDefault('department', $templateuser->department);
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'phone1', '');
+            $mform->setType('phone1', PARAM_NOTAGS);
+        } else {
+            $mform->addElement('text', 'phone1', get_string('phone1'), 'maxlength="20" size="25"');
+            $mform->setType('phone1', PARAM_NOTAGS);
+            $mform->setAdvanced('phone1');
+            $mform->setForceLtr('phone1');
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'phone2', '');
+            $mform->setType('phone2', PARAM_NOTAGS);
+        } else {
+            $mform->addElement('text', 'phone2', get_string('phone2'), 'maxlength="20" size="25"');
+            $mform->setType('phone2', PARAM_NOTAGS);
+            $mform->setAdvanced('phone2');
+            $mform->setForceLtr('phone2');
+        }
+
+        if ($skillmanuploader) {
+            $mform->addElement('hidden', 'address', '');
+            $mform->setType('address', PARAM_TEXT);
+        } else {
+            $mform->addElement('text', 'address', get_string('address'), 'maxlength="255" size="25"');
+            $mform->setType('address', PARAM_TEXT);
+            $mform->setAdvanced('address');
+        }
+
+        if (!$skillmanuploader) {
+            // Next the profile defaults
+            profile_definition($mform);
+        }
         // hidden fields
         $mform->addElement('hidden', 'iid');
         $mform->setType('iid', PARAM_INT);
@@ -344,7 +516,12 @@ class admin_uploaduser_form2 extends moodleform {
         $mform->addElement('hidden', 'previewrows');
         $mform->setType('previewrows', PARAM_INT);
 
-        $this->add_action_buttons(true, get_string('uploadusers', 'tool_uploaduser'));
+        if ($skillmanuploader) {
+            $this->add_action_buttons(true, get_string('uploadusersdqf', 'tool_uploaduser'));
+            $mform->addElement('html', get_string('uploadusersdqfhelp', 'tool_uploaduser'));
+        } else {
+            $this->add_action_buttons(true, get_string('uploadusers', 'tool_uploaduser'));
+        }
 
         $this->set_data($data);
     }

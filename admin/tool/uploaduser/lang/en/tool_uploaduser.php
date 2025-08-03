@@ -120,3 +120,12 @@ $string['uuupdatetype'] = 'Existing user details';
 $string['uuusernametemplate'] = 'Username template';
 $string['privacy:metadata'] = 'The User upload plugin does not store any personal data.';
 $string['warningprefix'] = 'Warning:';
+// Skillman
+$string['uploadusersdqf'] = 'Add users to this Issuer Area';
+$string['userexist'] = 'User already exist';
+$string['uploadusersdqfhelp'] = <<<'BODY'
+<div><ul>
+<li>Upload not existing users (by email) and match them to this Issuer Area</li>
+<li>Basing on their email, match existing users to this Issuer Area</li>
+</ul></div>
+BODY;

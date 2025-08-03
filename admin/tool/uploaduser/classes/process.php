@@ -415,6 +415,21 @@ class process {
             }
         }
 
+        // Skillman - Get existing user  or generate new username.
+        if (empty($user->username) && !empty($user->email)) {
+            // Get existing user if exist
+            if (empty($user->mnethostid)) {
+                $user->mnethostid = $CFG->mnet_localhost_id;
+            }
+            if ($existinguser = $DB->get_record('user', ['email' => $user->email, 'mnethostid' => $user->mnethostid])) {
+                $user->username = $existinguser->username;
+            } else {
+                $emailarr=explode("@", $user->email);
+                $user->username = $emailarr[0] . '-' . bin2hex(random_bytes(4));
+                $user->username = core_user::clean_field($user->username, 'username');
+            }
+        }
+
         // Normalize username.
         $user->originalusername = $user->username;
         if ($this->get_normalise_user_names()) {
