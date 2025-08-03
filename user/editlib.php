@@ -344,6 +344,7 @@ function useredit_shared_definition(&$mform, $editoroptions, $filemanageroptions
     $choices = get_string_manager()->get_list_of_countries();
     $choices = array('' => get_string('selectacountry') . '...') + $choices;
     $mform->addElement('select', 'country', get_string('selectacountry'), $choices, $purpose);
+	$mform->addRule('country', get_string('missingcountry', 'theme_edumy'), 'required', null, 'client');
     if (!empty($CFG->country)) {
         $mform->setDefault('country', core_user::get_property_default('country'));
     }
@@ -440,6 +441,7 @@ function useredit_shared_definition(&$mform, $editoroptions, $filemanageroptions
     $mform->addElement('text', 'phone2', get_string('phone2'), 'maxlength="20" size="25"');
     $mform->setType('phone2', core_user::get_property_type('phone2'));
     $mform->setForceLtr('phone2');
+	$mform->addRule('phone2', get_string('missingphone2', 'theme_edumy'), 'required', null, 'client');
 
     $mform->addElement('text', 'address', get_string('address'), 'maxlength="255" size="25"');
     $mform->setType('address', core_user::get_property_type('address'));
