@@ -208,6 +208,138 @@ EOF;
     }
 
     /**
+     * Email-only uploads create one account and reuse it for later rows and uploads.
+     * @covers \tool_uploaduser\process
+     */
+    public function test_email_only_upload_reuses_account(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('passwordpolicy', 0);
+        $csv = "firstname,lastname,email\nFirst,Person,emailonly@example.com\nChanged,Person,EMAILONLY@example.com";
+        $options = ['--uutype=' . UU_USER_ADD_UPDATE, '--uumatchemail=1'];
+        $this->process_csv_upload($csv, $options);
+        $user = $DB->get_record('user', ['email' => 'emailonly@example.com'], '*', MUST_EXIST);
+        $this->assertMatchesRegularExpression('/^emailonly-[a-f0-9]{8}$/', $user->username);
+        $this->assertSame('First', $user->firstname);
+        $this->process_csv_upload($csv, $options);
+        $this->assertCount(1, uu_get_users_by_email('EMAILONLY@example.com', (int)$user->mnethostid));
+        $this->assertEquals($user->id, $DB->get_field('user', 'id', ['username' => $user->username]));
+    }
+
+    /**
+     * Empty usernames resolve existing accounts without replacing their details.
+     * @covers \tool_uploaduser\process
+     */
+    public function test_blank_username_matches_existing_email(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $user = $this->getDataGenerator()->create_user(['username' => 'existingemail', 'email' => 'existing@example.com']);
+        $csv = "username,firstname,lastname,email\n,Changed,Person,EXISTING@example.com";
+        $this->process_csv_upload($csv, ['--uutype=' . UU_USER_ADD_UPDATE, '--uumatchemail=1']);
+        $actual = $DB->get_record('user', ['id' => $user->id], '*', MUST_EXIST);
+        $this->assertSame($user->username, $actual->username);
+        $this->assertSame($user->firstname, $actual->firstname);
+        $this->assertCount(1, uu_get_users_by_email($user->email, (int)$user->mnethostid));
+    }
+
+    /**
+     * Ambiguous email addresses must not select or create an account.
+     * @covers \tool_uploaduser\process
+     */
+    public function test_email_only_upload_rejects_ambiguous_email(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('allowaccountssameemail', 1);
+        $this->getDataGenerator()->create_user(['email' => 'duplicate@example.com']);
+        $this->getDataGenerator()->create_user(['email' => 'duplicate@example.com']);
+        $before = $DB->count_records('user');
+        $csv = "firstname,lastname,email\nChanged,Person,DUPLICATE@example.com";
+        $output = $this->process_csv_upload($csv, ['--uutype=' . UU_USER_ADD_UPDATE, '--uumatchemail=1']);
+        $this->assertStringContainsString(get_string('duplicateemail', 'tool_uploaduser', 'DUPLICATE@example.com'), $output);
+        $this->assertEquals($before, $DB->count_records('user'));
+    }
+
+    /**
+     * Preview inserts a display-only username column without shifting CSV values.
+     * @covers \tool_uploaduser\preview
+     */
+    public function test_email_only_preview(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $user = $this->getDataGenerator()->create_user(['username' => 'previewuser', 'email' => 'preview@example.com']);
+        $cir = new \csv_import_reader(\csv_import_reader::get_new_iid('uploaduser'), 'uploaduser');
+        $cir->load_csv_content("firstname,lastname,email\nFirst,Person,PREVIEW@example.com\nNew,Person,new@example.com",
+            'UTF-8', 'comma');
+        $preview = new preview($cir, ['firstname', 'lastname', 'email'], 10);
+        $this->assertCount(6, $preview->head);
+        $this->assertCount(6, $preview->data[0]);
+        $this->assertSame('First', $preview->data[0]['firstname']);
+        $this->assertStringContainsString('previewuser', $preview->data[0]['username']);
+        $this->assertStringContainsString('id=' . $user->id, $preview->data[0]['username']);
+        $this->assertSame(get_string('userexist', 'tool_uploaduser'), $preview->data[0]['status']);
+        $this->assertSame('', $preview->data[1]['status']);
+        $cir->cleanup(true);
+    }
+
+    /**
+     * Generated usernames remain valid and fit the database column.
+     * @covers ::uu_generate_username_from_email
+     */
+    public function test_generated_username_length(): void {
+        $this->resetAfterTest();
+        $email = str_repeat('a', 110) . '@example.com';
+        $username = uu_generate_username_from_email($email);
+        $this->assertSame(100, \core_text::strlen($username));
+        $this->assertSame($username, \core_user::clean_field($username, 'username'));
+        $this->assertNotSame($username, uu_generate_username_from_email($email));
+    }
+
+    /**
+     * The uploader cannot override fixed settings, including settings also present in CSV.
+     * @covers \admin_uploaduser_form2
+     */
+    public function test_uploader_form_enforces_fixed_settings(): void {
+        global $USER;
+
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $roleid = create_role('User uploader', 'useruploader', '');
+        $this->getDataGenerator()->role_assign($roleid, $user->id, context_system::instance()->id);
+        $this->setUser($user);
+        $USER->ignoresesskey = true;
+        $submitted = [
+            '_qf__admin_uploaduser_form2' => 1,
+            'uutype' => UU_USER_ADDNEW,
+            'uuupdatetype' => UU_UPDATE_ALLOVERRIDE,
+            'uumatchemail' => 0,
+            'uuallowdeletes' => 1,
+            'uuallowrenames' => 1,
+            'maildisplay' => 2,
+            'autosubscribe' => 1,
+        ];
+        $form = new \admin_uploaduser_form2(null,
+            ['columns' => ['firstname', 'lastname', 'email', 'auth', 'maildisplay'], 'data' => []],
+            'post', '', [], true, $submitted);
+        $data = $form->get_data();
+        $this->assertNotNull($data);
+        $this->assertEquals(UU_USER_ADD_UPDATE, $data->uutype);
+        $this->assertEquals(UU_UPDATE_NOCHANGES, $data->uuupdatetype);
+        $this->assertEquals(1, $data->uumatchemail);
+        $this->assertEquals(0, $data->uuallowdeletes);
+        $this->assertEquals(0, $data->uuallowrenames);
+        $this->assertEquals(0, $data->maildisplay);
+        $this->assertEquals(0, $data->autosubscribe);
+        $this->assertSame('manual', $data->auth);
+        $this->assertSame('', $data->description);
+    }
+
+    /**
      * Generate cli_helper and mock $_SERVER['argv']
      *
      * @param string $filecontent

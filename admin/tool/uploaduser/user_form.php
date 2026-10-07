@@ -27,6 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once $CFG->libdir.'/formslib.php';
 require_once($CFG->dirroot . '/user/editlib.php');
+require_once($CFG->dirroot . '/admin/tool/uploaduser/locallib.php');
 
 /**
  * Upload a file CVS file with user information.
@@ -36,6 +37,8 @@ require_once($CFG->dirroot . '/user/editlib.php');
  */
 class admin_uploaduser_form1 extends moodleform {
     function definition() {
+        global $USER;
+
         $mform = $this->_form;
 
         $mform->addElement('header', 'settingsheader', get_string('upload'));
@@ -65,6 +68,16 @@ class admin_uploaduser_form1 extends moodleform {
         $choices = array('10'=>10, '20'=>20, '100'=>100, '1000'=>1000, '100000'=>100000);
         $mform->addElement('select', 'previewrows', get_string('rowpreviewnum', 'tool_uploaduser'), $choices);
         $mform->setType('previewrows', PARAM_INT);
+
+        if (check_custom_upload_role($USER)) {
+            foreach (['delimiter_name' => 'comma', 'encoding' => 'UTF-8', 'previewrows' => 10] as $name => $value) {
+                $mform->removeElement($name);
+                $mform->addElement('hidden', $name, $value);
+                $mform->setType($name, is_int($value) ? PARAM_INT : PARAM_TEXT);
+                $mform->setDefault($name, $value);
+                $mform->setConstant($name, $value);
+            }
+        }
 
         $this->add_action_buttons(false, get_string('uploadusers', 'tool_uploaduser'));
     }
@@ -96,6 +109,7 @@ class admin_uploaduser_form2 extends moodleform {
         $mform   = $this->_form;
         $columns = $this->_customdata['columns'];
         $data    = $this->_customdata['data'];
+        $skillmanuploader = check_custom_upload_role($USER);
 
         // upload settings and file
         $mform->addElement('header', 'settingsheader', get_string('settings'));
@@ -187,7 +201,7 @@ class admin_uploaduser_form2 extends moodleform {
                 break;
             }
         }
-        if ($showroles) {
+        if ($showroles && !$skillmanuploader) {
             $mform->addElement('header', 'rolesheader', get_string('roles'));
 
             $choices = uu_allowed_roles(true);
@@ -319,7 +333,55 @@ class admin_uploaduser_form2 extends moodleform {
         $mform->setAdvanced('address');
 
         // Next the profile defaults
-        profile_definition($mform);
+        if (!$skillmanuploader) {
+            profile_definition($mform);
+        } else {
+            foreach (['settingsheader', 'defaultheader', 'username', 'email', 'description'] as $name) {
+                $mform->removeElement($name);
+            }
+            // Replace configurable defaults with server-enforced values for the Skillman upload role.
+            $fixedvalues = [
+                'uutype' => UU_USER_ADD_UPDATE,
+                'uupasswordnew' => 1,
+                'uuupdatetype' => UU_UPDATE_NOCHANGES,
+                'uupasswordold' => 0,
+                'uuforcepasswordchange' => empty($CFG->passwordpolicy) ? UU_PWRESET_NONE : UU_PWRESET_WEAK,
+                'uumatchemail' => 1,
+                'uuallowrenames' => 0,
+                'uuallowdeletes' => 0,
+                'uuallowsuspends' => 1,
+                'uunoemailduplicates' => 1,
+                'uustandardusernames' => 1,
+                'uubulk' => UU_BULK_NONE,
+                'auth' => 'manual',
+                'maildisplay' => 0,
+                'emailstop' => 0,
+                'mailformat' => 1,
+                'maildigest' => 2,
+                'autosubscribe' => 0,
+                'city' => '',
+                'country' => '',
+                'timezone' => '99',
+                'lang' => 'en',
+                'description' => '',
+                'descriptionformat' => FORMAT_HTML,
+                'idnumber' => '',
+                'institution' => '',
+                'department' => '',
+                'phone1' => '',
+                'phone2' => '',
+                'address' => '',
+            ];
+            foreach ($fixedvalues as $name => $value) {
+                if ($mform->elementExists($name)) {
+                    $mform->removeElement($name);
+                }
+                $mform->addElement('hidden', $name, $value);
+                $mform->setType($name, is_int($value) ? PARAM_INT : PARAM_TEXT);
+                $mform->setDefault($name, $value);
+                $mform->setConstant($name, $value);
+            }
+        }
 
         // hidden fields
         $mform->addElement('hidden', 'iid');
@@ -328,7 +390,10 @@ class admin_uploaduser_form2 extends moodleform {
         $mform->addElement('hidden', 'previewrows');
         $mform->setType('previewrows', PARAM_INT);
 
-        $this->add_action_buttons(true, get_string('uploadusers', 'tool_uploaduser'));
+        $this->add_action_buttons(true, get_string($skillmanuploader ? 'uploadusersdqf' : 'uploadusers', 'tool_uploaduser'));
+        if ($skillmanuploader) {
+            $mform->addElement('html', get_string('uploadusersdqfhelp', 'tool_uploaduser'));
+        }
 
         $this->set_data($data);
     }
@@ -337,6 +402,12 @@ class admin_uploaduser_form2 extends moodleform {
      * Form tweaks that depend on current data.
      */
     function definition_after_data() {
+        global $USER;
+
+        if (check_custom_upload_role($USER)) {
+            // CSV columns must not remove the fixed processing settings.
+            return;
+        }
         $mform   = $this->_form;
         $columns = $this->_customdata['columns'];
 
@@ -427,7 +498,7 @@ class admin_uploaduser_form2 extends moodleform {
     function get_data() {
         $data = parent::get_data();
 
-        if ($data !== null and isset($data->description)) {
+        if ($data !== null && isset($data->description) && is_array($data->description)) {
             $data->descriptionformat = $data->description['format'];
             $data->description = $data->description['text'];
         }

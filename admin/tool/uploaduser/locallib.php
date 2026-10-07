@@ -25,6 +25,59 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+/**
+ * Whether the user has the Skillman upload role in the system context.
+ *
+ * @param object $user user to check
+ * @return bool
+ */
+function check_custom_upload_role(object $user): bool {
+    if (empty($user->id)) {
+        return false;
+    }
+    foreach (get_user_roles(context_system::instance(), $user->id) as $role) {
+        if ($role->shortname === 'useruploader') {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Find active accounts with an email address on a single MNet host.
+ *
+ * Return at most two accounts so callers can detect ambiguous email addresses.
+ *
+ * @param string $email email address
+ * @param int $mnethostid MNet host id
+ * @return array
+ */
+function uu_get_users_by_email(string $email, int $mnethostid): array {
+    global $DB;
+
+    $select = $DB->sql_equal('email', ':email', false) . ' AND mnethostid = :mnethostid AND deleted = 0';
+    return $DB->get_records_select('user', $select, ['email' => $email, 'mnethostid' => $mnethostid],
+        'id', 'id, username, email', 0, 2);
+}
+
+/**
+ * Generate a valid, unused local username from an email address.
+ *
+ * @param string $email email address
+ * @return string
+ */
+function uu_generate_username_from_email(string $email): string {
+    global $CFG, $DB;
+
+    $prefix = core_user::clean_field(explode('@', $email, 2)[0], 'username');
+    // The user table allows 100 characters; reserve nine for the hyphen and random suffix.
+    $prefix = core_text::substr($prefix, 0, 91);
+    do {
+        $username = $prefix . '-' . bin2hex(random_bytes(4));
+    } while ($DB->record_exists('user', ['username' => $username, 'mnethostid' => $CFG->mnet_localhost_id]));
+    return $username;
+}
+
 define('UU_USER_ADDNEW', 0);
 define('UU_USER_ADDINC', 1);
 define('UU_USER_ADD_UPDATE', 2);

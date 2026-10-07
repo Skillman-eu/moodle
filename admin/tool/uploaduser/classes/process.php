@@ -415,6 +415,22 @@ class process {
             }
         }
 
+        // Skillman: a missing username is resolved by email before normal processing.
+        if ($user->username === '' && !empty($user->email) && validate_email($user->email)) {
+            $emailusers = uu_get_users_by_email($user->email, (int)(empty($user->mnethostid) ?
+                $CFG->mnet_localhost_id : $user->mnethostid));
+            if (count($emailusers) > 1) {
+                $this->upt->track('status', get_string('duplicateemail', 'tool_uploaduser', $user->email), 'warning');
+                $this->userserrors++;
+                return null;
+            }
+            if ($emailusers) {
+                $user->username = reset($emailusers)->username;
+            } else {
+                $user->username = uu_generate_username_from_email($user->email);
+            }
+        }
+
         // Normalize username.
         $user->originalusername = $user->username;
         if ($this->get_normalise_user_names()) {

@@ -71,6 +71,9 @@ class preview extends \html_table {
         $this->data = $this->read_data();
 
         $this->head[] = get_string('uucsvline', 'tool_uploaduser');
+        if (!in_array('username', $filecolumns)) {
+            $this->head[] = 'username';
+        }
         foreach ($filecolumns as $column) {
             $this->head[] = $column;
         }
@@ -99,34 +102,46 @@ class preview extends \html_table {
             $linenum++;
             $rowcols = array();
             $rowcols['line'] = $linenum;
+            if (!in_array('username', $this->filecolumns)) {
+                $rowcols['username'] = '';
+            }
+            $rawcols = [];
             foreach ($fields as $key => $field) {
+                $rawcols[$this->filecolumns[$key]] = trim($field);
                 $rowcols[$this->filecolumns[$key]] = s(trim($field));
             }
             $rowcols['status'] = array();
 
-            if (isset($rowcols['username'])) {
-                $stdusername = \core_user::clean_field($rowcols['username'], 'username');
-                if ($rowcols['username'] !== $stdusername) {
+            $username = $rawcols['username'] ?? '';
+            if (!empty($rawcols['email'])) {
+                if (!validate_email($rawcols['email'])) {
+                    $rowcols['status'][] = get_string('invalidemail');
+                } else {
+                    $emailusers = uu_get_users_by_email($rawcols['email'],
+                        (int)($rawcols['mnethostid'] ?? $CFG->mnet_localhost_id));
+                    if (count($emailusers) > 1) {
+                        $rowcols['status'][] = get_string('duplicateemail', 'tool_uploaduser', s($rawcols['email']));
+                    } else if ($emailusers) {
+                        $rowcols['status'][] = get_string('userexist', 'tool_uploaduser');
+                        if ($username === '') {
+                            $username = reset($emailusers)->username;
+                            $rowcols['username'] = s($username);
+                        }
+                    }
+                }
+            } else if ($username === '') {
+                $rowcols['status'][] = get_string('missingfield', 'error', 'email');
+            }
+
+            if ($username !== '') {
+                $stdusername = \core_user::clean_field($username, 'username');
+                if ($username !== $stdusername) {
                     $rowcols['status'][] = get_string('invalidusernameupload');
                 }
                 if ($userid = $DB->get_field('user', 'id',
                         ['username' => $stdusername, 'mnethostid' => $CFG->mnet_localhost_id])) {
                     $rowcols['username'] = \html_writer::link(
                         new \moodle_url('/user/profile.php', ['id' => $userid]), $rowcols['username']);
-                }
-            } else {
-                $rowcols['status'][] = get_string('missingusername');
-            }
-
-            if (isset($rowcols['email'])) {
-                if (!validate_email($rowcols['email'])) {
-                    $rowcols['status'][] = get_string('invalidemail');
-                }
-
-                $select = $DB->sql_like('email', ':email', false, true, false, '|');
-                $params = array('email' => $DB->sql_like_escape($rowcols['email'], '|'));
-                if ($DB->record_exists_select('user', $select , $params)) {
-                    $rowcols['status'][] = get_string('useremailduplicate', 'error');
                 }
             }
 
@@ -143,7 +158,8 @@ class preview extends \html_table {
             $data[] = $rowcols;
         }
         if ($fields = $this->cir->next()) {
-            $data[] = array_fill(0, count($fields) + 2, '...');
+            $data[] = array_fill(0, count($this->filecolumns) + 2 +
+                (in_array('username', $this->filecolumns) ? 0 : 1), '...');
         }
         $this->cir->close();
 
